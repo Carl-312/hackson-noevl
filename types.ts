@@ -40,6 +40,7 @@ export interface GalgameScript {
 export enum GameState {
   IDLE = 'IDLE',
   ANALYZING = 'ANALYZING',
+  STREAMING = 'STREAMING',
   PLAYING = 'PLAYING',
   ENDED = 'ENDED',
   ERROR = 'ERROR'
@@ -49,3 +50,20 @@ export interface PlayState {
   currentNodeId: string;
   history: string[]; // List of node IDs visited
 }
+
+// 流式加载相关类型
+export interface StreamedScript extends GalgameScript {
+  isStreamed: true;
+  totalSegments: number;
+  loadedSegments: number;
+  isComplete: boolean;
+}
+
+export interface SegmentProgress {
+  currentSegment: number;
+  totalSegments: number;
+  status: 'pending' | 'loading' | 'complete' | 'error';
+}
+
+export const STORY_SEGMENT_THRESHOLD = 5000;
+export const SEGMENT_SIZE = 3000;

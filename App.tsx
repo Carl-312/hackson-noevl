@@ -1,22 +1,78 @@
-import React, { useState } from 'react';
-import { GameState, GalgameScript } from './types';
+import React, { useState, useCallback } from 'react';
+import { GameState, GalgameScript, StreamedScript, SegmentProgress } from './types';
 import { analyzeStory } from './services/aliyunService';
+import { analyzeStoryStreamed, shouldUseStreaming } from './services/streamedService';
 import { InputStage } from './components/InputStage';
 import { GameEngine } from './components/GameEngine';
+import { StreamingProgress } from './components/StreamingProgress';
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(GameState.IDLE);
-  const [script, setScript] = useState<GalgameScript | null>(null);
+  const [script, setScript] = useState<GalgameScript | StreamedScript | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [streamProgress, setStreamProgress] = useState<SegmentProgress | null>(null);
+  const [isStreamed, setIsStreamed] = useState(false);
+
+  // 增量更新 script 的回调
+  const handleChunk = useCallback((chunk: Partial<GalgameScript>) => {
+    setScript(prev => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        ...chunk,
+        // 合并节点数组
+        nodes: chunk.nodes
+          ? [...prev.nodes, ...chunk.nodes]
+          : prev.nodes,
+        // 保留流式标记
+        ...(isStreamed && {
+          isStreamed: true,
+          totalSegments: (prev as StreamedScript).totalSegments,
+          loadedSegments: (prev as StreamedScript).loadedSegments + 1,
+          isComplete: (prev as StreamedScript).loadedSegments + 1 >= (prev as StreamedScript).totalSegments
+        })
+      };
+    });
+  }, [isStreamed]);
 
   const handleAnalysis = async (text: string) => {
     setGameState(GameState.ANALYZING);
     setError(null);
+    setStreamProgress(null);
+    setIsStreamed(false);
+
     try {
-      const result = await analyzeStory(text);
-      console.log("Script Generated:", result);
-      setScript(result);
-      setGameState(GameState.PLAYING);
+      const useStreaming = shouldUseStreaming(text);
+
+      if (!useStreaming) {
+        // 短文本：使用原有逻辑
+        const result = await analyzeStory(text);
+        console.log("Script Generated:", result);
+        setScript(result);
+        setGameState(GameState.PLAYING);
+      } else {
+        // 长文本：使用流式加载
+        setIsStreamed(true);
+        setGameState(GameState.STREAMING);
+
+        const result = await analyzeStoryStreamed(
+          text,
+          (progress) => setStreamProgress(progress),
+          handleChunk
+        );
+
+        // 设置最终剧本，标记为流式完成
+        setScript({
+          ...result,
+          isStreamed: true,
+          totalSegments: streamProgress?.totalSegments || 1,
+          loadedSegments: streamProgress?.totalSegments || 1,
+          isComplete: true
+        } as StreamedScript);
+
+        setStreamProgress(null);
+        setGameState(GameState.PLAYING);
+      }
     } catch (err) {
       console.error(err);
       setError("故事转化失败。系统检测到异常，请重试。");
@@ -27,6 +83,8 @@ const App: React.FC = () => {
   const handleReset = () => {
     setGameState(GameState.IDLE);
     setScript(null);
+    setStreamProgress(null);
+    setIsStreamed(false);
   };
 
   return (
@@ -45,6 +103,10 @@ const App: React.FC = () => {
         <InputStage
           onAnalyze={handleAnalysis}
           isLoading={gameState === GameState.ANALYZING}
+        />
+      ) : gameState === GameState.STREAMING ? (
+        <StreamingProgress
+          progress={streamProgress!}
         />
       ) : (
         script && (

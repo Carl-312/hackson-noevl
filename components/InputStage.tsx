@@ -81,13 +81,18 @@ export const InputStage: React.FC<InputStageProps> = ({ onAnalyze, isLoading }) 
                  上传文件 (.txt)
                </button>
             </div>
-            <textarea 
+            <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
               disabled={isLoading}
               className="w-full h-64 bg-paper border-2 border-ink p-4 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-signal focus:border-signal resize-none placeholder-ink/30"
               placeholder="在此粘贴你的故事片段、小说章节，或上传文本文件..."
             />
+            <div className={`font-mono text-xs text-right ${text.length > 5000 ? 'text-signal font-bold' : 'text-ink/60'}`}>
+              {text.length > 5000
+                ? `已启用分段加载模式 // ${text.length.toLocaleString()} 字`
+                : `${text.length.toLocaleString()} 字`}
+            </div>
           </div>
 
           {/* Control Panel */}

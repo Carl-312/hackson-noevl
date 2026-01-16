@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { GalgameScript, GameState, StoryNode, Character } from '../types';
+import { GalgameScript, StreamedScript, StoryNode, Character } from '../types';
 import { IconRefresh, IconHistory, IconArrowRight } from './Icons';
 
 interface GameEngineProps {
-  script: GalgameScript;
+  script: GalgameScript | StreamedScript;
   onReset: () => void;
 }
 
@@ -15,6 +15,10 @@ interface LogEntry {
 export const GameEngine: React.FC<GameEngineProps> = ({ script, onReset }) => {
   const [currentNodeId, setCurrentNodeId] = useState<string>(script.startNodeId);
   const currentNode = script.nodes.find(n => n.id === currentNodeId);
+
+  // 流式剧本状态
+  const isStreamed = 'isStreamed' in script && script.isStreamed;
+  const isComplete = !isStreamed || ('isComplete' in script && script.isComplete);
   
   // Interaction State
   const [typingText, setTypingText] = useState('');
@@ -216,10 +220,20 @@ export const GameEngine: React.FC<GameEngineProps> = ({ script, onReset }) => {
           {/* B. Dead End Warning */}
           {!isTyping && currentNode.choices.length === 0 && !currentNode.isEnding && (
              <div className="flex justify-center mb-4">
-                 <div className="bg-signal text-paper px-4 py-2 font-mono text-xs">
-                     SYSTEM WARNING: END OF DATA STREAM (NO BRANCHES FOUND)
+                 <div className="bg-signal text-paper px-4 py-2 font-mono text-xs animate-pulse">
+                     {isStreamed && !isComplete ? "系统加载中... // STREAMING DATA..." : "SYSTEM WARNING: END OF DATA STREAM (NO BRANCHES FOUND)"}
                  </div>
              </div>
+          )}
+
+          {/* B+. Streamed Loading Indicator */}
+          {!isComplete && !isTyping && isLinear && script.nodes.length > 0 && script.nodes.findIndex(n => n.id === currentNodeId) >= script.nodes.length - 3 && (
+            <div className="flex justify-center mb-4">
+              <div className="bg-ink/80 text-paper px-4 py-2 font-mono text-xs flex items-center gap-2 border border-signal/30">
+                <span className="animate-spin inline-block w-3 h-3 border-2 border-signal border-t-transparent rounded-full"></span>
+                <span>后续剧情生成中...</span>
+              </div>
+            </div>
           )}
 
           {/* C. Main Text Box */}
