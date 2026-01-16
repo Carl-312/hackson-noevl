@@ -1,0 +1,5 @@
+{
+  "name": "叙事引擎 / Noir",
+  "description": "一个高保真的互动叙事引擎，利用 Gemini AI 将线性小说转化为分支视觉小说。灵感来自 Saul Bass 的动态排版和 Teenage Engineering 的工业精密感。",
+  "requestFramePermissions": []
+}
