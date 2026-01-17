@@ -12,6 +12,17 @@ dist
 dist-ssr
 *.local
 
+# Environment variables - CRITICAL for hackthon collaboration
+.env
+.env.production
+
+# Claude Code temporary directories
+tmpclaude-*/
+
+# IDE temporary files
+.idea/
+.vscode/settings.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
