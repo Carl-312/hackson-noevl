@@ -11,6 +11,7 @@ export interface Scene {
   description: string;
   mood: string;
   visualPrompt: string;
+  imageUrl?: string;
 }
 
 export interface Choice {
@@ -26,6 +27,12 @@ export interface StoryNode {
   text: string;
   choices: Choice[];
   isEnding?: boolean;
+  visualSpecs?: {
+    type: "item" | "cg";
+    description: string;
+    visualPrompt: string;
+    imageUrl?: string; // storage for the generated asset
+  };
 }
 
 export interface GalgameScript {
@@ -39,10 +46,19 @@ export interface GalgameScript {
 
 export enum GameState {
   IDLE = 'IDLE',
-  ANALYZING = 'ANALYZING',
+  ANALYZING_OUTLINE = 'ANALYZING_OUTLINE',
+  GENERATING_CHUNKS = 'GENERATING_CHUNKS',
+  GENERATING_ASSETS = 'GENERATING_ASSETS',
   PLAYING = 'PLAYING',
   ENDED = 'ENDED',
   ERROR = 'ERROR'
+}
+
+export interface AnalysisProgress {
+  phase: 'OUTLINE' | 'CHUNKS' | 'ASSETS';
+  current: number;
+  total: number;
+  message: string;
 }
 
 export interface PlayState {

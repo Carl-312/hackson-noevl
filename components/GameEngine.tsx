@@ -1,6 +1,7 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { GalgameScript, GameState, StoryNode, Character } from '../types';
 import { IconRefresh, IconHistory, IconArrowRight } from './Icons';
+import { generateImage } from '../services/imageGenerationService';
 
 interface GameEngineProps {
   script: GalgameScript;
@@ -21,6 +22,19 @@ export const GameEngine: React.FC<GameEngineProps> = ({ script, onReset }) => {
   const [isTyping, setIsTyping] = useState(true);
   const [historyLog, setHistoryLog] = useState<LogEntry[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+
+  // Image Generation State
+  const [generatedImages, setGeneratedImages] = useState<Record<string, string>>(() => {
+    // Pre-populate with images already generated in the pipeline
+    const initial: Record<string, string> = {};
+    script.nodes.forEach(node => {
+      if (node.visualSpecs?.imageUrl) {
+        initial[node.id] = node.visualSpecs.imageUrl;
+      }
+    });
+    return initial;
+  });
+  const [generatingNodes, setGeneratingNodes] = useState<Set<string>>(new Set());
 
   // Refs needed for auto-scroll
   const historyEndRef = useRef<HTMLDivElement>(null);
@@ -70,6 +84,40 @@ export const GameEngine: React.FC<GameEngineProps> = ({ script, onReset }) => {
     }
   }, [showHistory]);
 
+  // Trigger Image Generation
+  useEffect(() => {
+    if (currentNode?.visualSpecs && generatedImages[currentNode.id] === undefined && !generatingNodes.has(currentNode.id)) {
+      console.log(`[GameEngine] Triggering generation for node ${currentNode.id}: ${currentNode.visualSpecs.visualPrompt}`);
+
+      // Mark as generating
+      setGeneratingNodes(prev => new Set(prev).add(currentNode.id));
+
+      generateImage(currentNode.visualSpecs.visualPrompt)
+        .then(url => {
+          console.log(`[GameEngine] Generated image for ${currentNode.id}: ${url}`);
+          setGeneratedImages(prev => ({
+            ...prev,
+            [currentNode.id]: url
+          }));
+        })
+        .catch(err => {
+          console.error(`[GameEngine] Failed to generate image for ${currentNode.id}`, err);
+          // Set to empty string to prevent retry loop
+          setGeneratedImages(prev => ({
+            ...prev,
+            [currentNode.id]: ""
+          }));
+        })
+        .finally(() => {
+          setGeneratingNodes(prev => {
+            const next = new Set(prev);
+            next.delete(currentNode.id);
+            return next;
+          });
+        });
+    }
+  }, [currentNode, generatedImages, generatingNodes]);
+
   // Actions
   const handleInteraction = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -113,8 +161,12 @@ export const GameEngine: React.FC<GameEngineProps> = ({ script, onReset }) => {
   };
 
   const getBackgroundImage = (sceneId: string) => {
+    const scene = script.scenes.find(s => s.id === sceneId);
+    if (scene?.imageUrl) return scene.imageUrl;
+
+    // Fallback if no generated image
     const seed = sceneId.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
-    return `https://picsum.photos/seed/${seed}_bg/1280/720?grayscale&blur=2`;
+    return `https://picsum.photos/seed/${seed}_bg/1280/720`;
   };
 
   return (
@@ -122,10 +174,10 @@ export const GameEngine: React.FC<GameEngineProps> = ({ script, onReset }) => {
 
       {/* 1. Background Layer */}
       <div
-        className="absolute inset-0 bg-cover bg-center transition-opacity duration-1000"
+        className="absolute inset-0 bg-cover bg-center transition-all duration-1000"
         style={{
           backgroundImage: `url(${getBackgroundImage(currentNode.sceneId)})`,
-          opacity: 0.4
+          opacity: 0.6
         }}
       />
 
@@ -134,7 +186,7 @@ export const GameEngine: React.FC<GameEngineProps> = ({ script, onReset }) => {
 
       {/* 3. Character Layer */}
       <div className="absolute inset-0 flex items-end justify-center pointer-events-none z-10">
-        {currentCharacter && (
+        {currentCharacter && !currentNode.visualSpecs && (
           <div className="relative animate-slide-up">
             <img
               src={getCharacterImage(currentCharacter)}
@@ -147,6 +199,47 @@ export const GameEngine: React.FC<GameEngineProps> = ({ script, onReset }) => {
           </div>
         )}
       </div>
+
+      {/* 3.5. Spot Illustration / CG Layer */}
+      {currentNode.visualSpecs && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-15 animate-fade-in">
+          {currentNode.visualSpecs.type === 'cg' ? (
+            // Fullscreen CG
+            // Fullscreen CG
+            <div className="relative w-full h-full">
+              <img
+                src={generatedImages[currentNode.id] || currentNode.visualSpecs.imageUrl || `https://picsum.photos/seed/${currentNode.visualSpecs.description.length}/1280/720?grayscale&blur=1`}
+                className={`w-full h-full object-cover transition-opacity duration-700 ${generatedImages[currentNode.id] ? 'opacity-100' : 'opacity-50 blur-sm'}`}
+              />
+              {!generatedImages[currentNode.id] && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="bg-black/50 text-white px-4 py-2 rounded-full font-mono text-sm animate-pulse">
+                    GENERATING VISUALS...
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            // Item Spot (Centered with frame)
+            <div className="bg-ink/80 p-4 border-2 border-signal shadow-2xl rotate-1 relative transition-all duration-500 hover:scale-105">
+              <div className="relative w-[400px] h-auto min-h-[300px]">
+                <img
+                  src={generatedImages[currentNode.id] || currentNode.visualSpecs.imageUrl || `https://picsum.photos/seed/${currentNode.visualSpecs.description.length}/600/400`}
+                  className={`w-full h-full object-cover grayscale contrast-125 transition-all duration-700 ${generatedImages[currentNode.id] ? 'grayscale-0' : ''}`}
+                />
+                {!generatedImages[currentNode.id] && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-sm">
+                    <div className="w-8 h-8 border-4 border-signal border-t-transparent rounded-full animate-spin"></div>
+                  </div>
+                )}
+              </div>
+              <div className="bg-signal text-paper font-mono text-center text-xs py-1 mt-2">
+                OBSERVED OBJECT // {currentNode.visualSpecs.description}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 4. UI Layer */}
       <div className="absolute inset-0 z-20 flex flex-col justify-between p-4 md:p-8">

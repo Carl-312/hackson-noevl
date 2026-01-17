@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { GameState, GalgameScript } from './types';
+import { GameState, GalgameScript, AnalysisProgress } from './types';
 import { analyzeStory } from './services/aliyunService';
 import { InputStage } from './components/InputStage';
 import { GameEngine } from './components/GameEngine';
@@ -8,12 +8,21 @@ const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(GameState.IDLE);
   const [script, setScript] = useState<GalgameScript | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<AnalysisProgress | null>(null);
 
   const handleAnalysis = async (text: string) => {
-    setGameState(GameState.ANALYZING);
+    setGameState(GameState.ANALYZING_OUTLINE);
     setError(null);
+    setProgress(null);
+
     try {
-      const result = await analyzeStory(text);
+      const result = await analyzeStory(text, (p) => {
+        setProgress(p);
+        if (p.phase === 'OUTLINE') setGameState(GameState.ANALYZING_OUTLINE);
+        else if (p.phase === 'CHUNKS') setGameState(GameState.GENERATING_CHUNKS);
+        else if (p.phase === 'ASSETS') setGameState(GameState.GENERATING_ASSETS);
+      });
+
       console.log("Script Generated:", result);
       setScript(result);
       setGameState(GameState.PLAYING);
@@ -29,6 +38,11 @@ const App: React.FC = () => {
     setScript(null);
   };
 
+  const isAnalyzing =
+    gameState === GameState.ANALYZING_OUTLINE ||
+    gameState === GameState.GENERATING_CHUNKS ||
+    gameState === GameState.GENERATING_ASSETS;
+
   return (
     <main className="min-h-screen bg-paper text-ink selection:bg-signal selection:text-white overflow-hidden">
 
@@ -41,10 +55,11 @@ const App: React.FC = () => {
       )}
 
       {/* State Manager */}
-      {gameState === GameState.IDLE || gameState === GameState.ANALYZING ? (
+      {gameState === GameState.IDLE || isAnalyzing ? (
         <InputStage
           onAnalyze={handleAnalysis}
-          isLoading={gameState === GameState.ANALYZING}
+          isLoading={isAnalyzing}
+          progress={progress}
         />
       ) : (
         script && (
@@ -55,8 +70,8 @@ const App: React.FC = () => {
         )
       )}
 
-      {/* API Key Modal Check (Simple implementation for prompt requirement) */}
-      {!process.env.API_KEY && (
+      {/* API Key Modal Check */}
+      {(!import.meta.env.VITE_ALIYUN_API_KEY && !import.meta.env.VITE_GEMINI_API_KEY && !(typeof process !== 'undefined' && process.env.API_KEY)) && (
         <div className="fixed inset-0 z-[100] bg-ink/90 flex items-center justify-center p-4">
           <div className="bg-paper p-8 max-w-md w-full border-4 border-signal">
             <h2 className="font-serif text-2xl font-bold mb-4">系统缺失密钥</h2>

@@ -1,8 +1,15 @@
 import { StoryNode, Character, Scene } from '../../types';
 import { StoryBeat } from './types';
 
-const ALIYUN_API_ENDPOINT = "/api/aliyun/api/v1/services/aigc/text-generation/generation";
+const BASE_PATH = "/api/v1/services/aigc/text-generation/generation";
 const MODEL_NAME = "qwen-plus";
+
+const getEndpoint = () => {
+    if (typeof window !== 'undefined') {
+        return `/api/aliyun${BASE_PATH}`;
+    }
+    return `https://dashscope.aliyuncs.com${BASE_PATH}`;
+};
 
 interface FragmentInput {
     storyText: string;
@@ -13,8 +20,17 @@ interface FragmentInput {
 }
 
 export const generateFragment = async (input: FragmentInput): Promise<StoryNode[]> => {
-    const apiKey = process.env.VITE_ALIYUN_API_KEY || process.env.API_KEY;
-    if (!apiKey) throw new Error("API_KEY missing");
+    const apiKey = (typeof process !== 'undefined' ? (process.env.VITE_ALIYUN_API_KEY || process.env.API_KEY || process.env.GEMINI_API_KEY) : null)
+        || (import.meta as any).env?.VITE_ALIYUN_API_KEY
+        || (import.meta as any).env?.VITE_GEMINI_API_KEY;
+
+    if (!apiKey) {
+        console.error("FragmentGenerator: API_KEY missing.");
+        throw new Error("API_KEY missing");
+    }
+
+    const endpoint = getEndpoint();
+    console.log(`[FragmentGenerator] Processing beats ${input.beatsToProcess.map(b => b.id).join(', ')} using endpoint: ${endpoint}`);
 
     // Construct a focused prompt for this specific batch
     // Construct a focused prompt for this specific batch
@@ -42,11 +58,17 @@ export const generateFragment = async (input: FragmentInput): Promise<StoryNode[
        - **严禁**包含 "他笑着说"、"怒吼道" 等引导语。
        - **严禁**截断对话首字。
     3. **旁白分离**: 环境描写和动作描写必须放入独立的 \`characterId: null\` 节点。
+       **关键规则**: 角色内心的独白、思考、自言自语，**必须**归类为该角色的对话(characterId填角色ID)，而**不是**null。这样能显示出角色的名字，表示是他在思考。
     4. **线性连接**: 
        - 除非是分支选项，否则每个节点都必须包含 **1个 "继续" 选项** (nextNodeId 先填 "NEXT" 占位, 后期组装时会自动替换)。
        - 最后一个节点的选项 nextNodeId 填 "END_OF_FRAGMENT"。
     5. **场景一致性**:
        - sceneId 必须严格从"可用场景列表"中选择。严禁捏造 ID。
+    6. **特殊视觉提取 (重要)**:
+       - 如果剧情涉及**关键物品**（如：捡起一把左轮手枪、看着古老的笔记）或**特殊动作**（如：照镜子查看伤口），请添加 \`visualSpecs\` 字段。
+       - 格式: \`visualSpecs: { type: "item" | "cg", description: "物品或情境描述", visualPrompt: "英文绘画提示词" }\`
+       - **item**: 想要展示某个具体物品时使用。
+       - **cg**: 想要展示某个充满临场感的画面时使用。
 
 
     ### 示例输出:
@@ -66,14 +88,14 @@ export const generateFragment = async (input: FragmentInput): Promise<StoryNode[
         },
         parameters: {
             result_format: "message",
-            temperature: 0.7,
+            temperature: 0.3,
             top_p: 0.8,
             max_tokens: 3000 // Focused generation, high detail
         }
     };
 
     try {
-        const response = await fetch(ALIYUN_API_ENDPOINT, {
+        const response = await fetch(endpoint, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
